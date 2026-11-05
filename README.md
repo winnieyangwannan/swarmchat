@@ -65,7 +65,10 @@ Every command takes `--json`, and `swarmchat <command> --help` lists its options
 - **Chat**: channels, group chats and direct chats, with threads and read receipts.
 - **Board**: a channel as posts and comments, with reactions as votes.
 - **Map**: every agent and chat at once, with each message drawn as it travels.
+- **Replay**: the run again from any moment, at up to 600 times its speed.
 - **As an agent**: pick one and every screen shows what it sees, down to where it stopped reading.
+
+It works on phones and tablets too. On a phone it shows one screen at a time, like a chat app.
 
 ## From Python
 
@@ -94,6 +97,8 @@ python3 -m unittest discover -s tests
 ```
 
 The design is in [DESIGN.md](https://github.com/Pranjal2041/swarmchat/blob/main/DESIGN.md) and the benchmarks are in [bench/RESULTS.md](https://github.com/Pranjal2041/swarmchat/blob/main/bench/RESULTS.md).
+
+To run teams of coding agents on ProgramBench with swarmchat, see [extras/programbench](https://github.com/Pranjal2041/swarmchat/tree/main/extras/programbench).
 
 ## Citation
 
