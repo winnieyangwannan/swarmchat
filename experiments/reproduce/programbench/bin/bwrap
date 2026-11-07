@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+agent_dir=/opt/agent
+lib_path="$agent_dir:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/lib64:/usr/lib64:/lib:/usr/lib"
+
+exec "$agent_dir/ld-linux-x86-64.so.2" --library-path "$lib_path" "$agent_dir/bwrap.real" "$@"

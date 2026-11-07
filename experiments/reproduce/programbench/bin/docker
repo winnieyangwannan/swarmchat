@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PROGRAMBENCH_PODMAN_DOCKER_CALLER=docker-shim
+exec /home/winnieyangwn/swarmchat/experiments/reproduce/programbench/bin/podman-docker "$@"

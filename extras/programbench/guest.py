@@ -335,6 +335,8 @@ def run_codex(config):
                                 process.stdin.flush()
                                 args = {'cwd': '/workspace', 'model': config['model'], 'approvalPolicy': 'never',
                                         'sandbox': 'danger-full-access', 'developerInstructions': config['system']}
+                                if config.get('model_provider'):
+                                    args['modelProvider'] = config['model_provider']
                                 if thread:
                                     send('thread/resume', {**args, 'threadId': thread})
                                 else:

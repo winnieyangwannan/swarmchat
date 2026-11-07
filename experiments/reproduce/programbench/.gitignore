@@ -1,0 +1,15 @@
+# Local runtime/cache material produced while staging and running this reproduction.
+codex-home/
+codex-packages/
+evidence/
+fbcode-lib-min/
+lib/
+smoke-agent-*/
+smoke-agent-home/
+wheelhouse/
+
+# Host binaries staged from the local devserver.
+bin/*.real
+
+# Host Codex managed config copy; keep local because it is environment-specific.
+etc-codex/

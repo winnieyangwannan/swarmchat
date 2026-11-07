@@ -1,0 +1,56 @@
+# Eight Codex agents using gpt-6-luna on the ProgramBench hex task.
+# Paths are relative to this config file.
+name = "repro-flat8-hex-gpt6-luna"
+tasks = ["sitkevij__hex.61ae69b"]
+hours = 6
+snapshot_minutes = 30
+parallel = 1
+loop = true
+
+[agent]
+kind = "codex"
+binary = "../bin/codex-container-wrapper"
+model = "gpt-6-luna"
+model_provider = "relay"
+api_base = "https://api.meta.ai"
+api_key_env = "MODEL_API_KEY"
+effort = "xhigh"
+files = [
+  "/usr/local/bin/codex_cli/codex",
+  "../codex-home/packages/meta-dotslash/releases/42c24d3d1610b2dcfbb02ec19a57bd7a1f4c82fbf16f6597ad83edf202ffd0b3/bin/codex-code-mode-host",
+  "../bin/whoami",
+  "../bin/bwrap",
+  "../bin/bwrap.real",
+  "../bin/dotslash",
+  "../bin/dotslash.real",
+  "../lib/ld-linux-x86-64.so.2",
+  "../lib/libssl.so.1.1",
+  "../lib/libcrypto.so.1.1",
+  "../lib/libc.so.6",
+  "../lib/libm.so.6",
+  "../lib/libdl.so.2",
+  "../lib/libpthread.so.0",
+  "../lib/librt.so.1",
+  "../lib/libresolv.so.2",
+  "../lib/libstdc++.so.6",
+  "../lib/libgcc_s.so.1",
+  "../lib/libselinux.so.1",
+  "../lib/libcap.so.2",
+  "../lib/libpcre2-8.so.0",
+  "../lib/libaio.so.1",
+  "../lib/libbz2.so.1",
+]
+
+[docker]
+command = "/home/winnieyangwn/swarmchat/experiments/reproduce/programbench/bin/podman-docker"
+
+[team]
+members = 8
+chat = true
+
+[team.channels]
+general = "all"
+
+[[team.roles]]
+name = "members"
+prompt = "../../../../extras/programbench/prompts/flat.md"

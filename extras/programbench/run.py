@@ -19,6 +19,7 @@ Needs Python 3.11 or later, Docker on a Linux x86_64 machine, and the agent's ow
 from __future__ import annotations
 
 import argparse
+import base64
 import http.client
 import json
 import os
@@ -37,7 +38,8 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
+from urllib.request import getproxies, proxy_bypass
 
 try:
     import tomllib
@@ -259,6 +261,79 @@ DROP = {'host', 'content-length', 'connection', 'keep-alive', 'transfer-encoding
 HOP = {'connection', 'keep-alive', 'transfer-encoding', 'content-length'}
 
 
+def proxy_auth_header(proxy):
+    if proxy.username is None:
+        return None
+    user = unquote(proxy.username)
+    password = unquote(proxy.password or '')
+    token = base64.b64encode(f'{user}:{password}'.encode()).decode()
+    return 'Basic '+token
+
+
+def upstream_connection(url):
+    """Return an http.client connection and request prefix, honoring standard proxy env vars."""
+    if url.hostname is None:
+        raise ValueError('upstream URL needs a hostname')
+    target_port = url.port or (443 if url.scheme == 'https' else 80)
+    proxy = None if proxy_bypass(url.hostname) else getproxies().get(url.scheme)
+    if proxy:
+        proxy_url = urlsplit(proxy)
+        if proxy_url.scheme == 'http' and proxy_url.hostname:
+            proxy_port = proxy_url.port or 80
+            if url.scheme == 'https':
+                connection = http.client.HTTPSConnection(proxy_url.hostname, proxy_port, timeout=3600)
+                tunnel_headers = {}
+                auth = proxy_auth_header(proxy_url)
+                if auth:
+                    tunnel_headers['Proxy-Authorization'] = auth
+                connection.set_tunnel(url.hostname, target_port, headers=tunnel_headers)
+                return connection, url.path.rstrip('/')
+            if url.scheme == 'http':
+                connection = http.client.HTTPConnection(proxy_url.hostname, proxy_port, timeout=3600)
+                upstream = f'{url.scheme}://{url.hostname}'
+                if url.port:
+                    upstream += f':{url.port}'
+                return connection, upstream+url.path.rstrip('/')
+    connection = (http.client.HTTPSConnection if url.scheme == 'https' else http.client.HTTPConnection)(
+        url.hostname, target_port, timeout=3600)
+    return connection, url.path.rstrip('/')
+
+
+def upstream_request_path(url, path):
+    return url.path.rstrip('/')+path
+
+
+def adapted_model_body(url, path, body):
+    if url.hostname != 'api.meta.ai' or upstream_request_path(url, path).split('?', 1)[0] != '/v1/responses':
+        return body
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return body
+    items = payload.get('input')
+    if not isinstance(items, list):
+        return body
+    kept, lifted = [], []
+    for item in items:
+        if isinstance(item, dict) and item.get('type') == 'additional_tools':
+            for tool in item.get('tools') or []:
+                if isinstance(tool, dict) and tool.get('type') == 'namespace':
+                    lifted.extend(t for t in tool.get('tools') or [] if isinstance(t, dict))
+                elif isinstance(tool, dict):
+                    lifted.append(tool)
+        else:
+            kept.append(item)
+    if len(kept) == len(items):
+        return body
+    payload['input'] = kept
+    if lifted:
+        for tool in lifted:
+            if not tool.get('description'):
+                tool['description'] = f'{tool.get("name") or "tool"} namespace'
+        payload['tools'] = [*payload.get('tools', []), *lifted]
+    return json.dumps(payload, separators=(',', ':')).encode()
+
+
 class ModelHandler(BaseHTTPRequestHandler):
     """One model request from an agent's container, sent on to the real API with the real key. The answer streams
     back as it arrives, and the connection closes after it."""
@@ -290,16 +365,24 @@ class ModelHandler(BaseHTTPRequestHandler):
             return
         body = self.body()
         url = urlsplit(server.api_base)
+        if url.hostname == 'api.meta.ai' and upstream_request_path(url, self.path).startswith('/v1/analytics/'):
+            self.send_response_only(204, 'No Content')
+            self.send_header('Content-Length', '0')
+            self.send_header('Connection', 'close')
+            self.end_headers()
+            server.record({'at': started, 'method': self.command, 'path': self.path, 'status': 204,
+                           'seconds': round(time.time()-started, 3), 'bytes': 0})
+            return
+        body = adapted_model_body(url, self.path, body)
         headers = {k: v for k, v in self.headers.items() if k.lower() not in DROP}
         if server.api_key and server.api_auth == 'x-api-key':
             headers['x-api-key'] = server.api_key
         elif server.api_key:
             headers['Authorization'] = 'Bearer '+server.api_key
-        connection = (http.client.HTTPSConnection if url.scheme == 'https' else http.client.HTTPConnection)(
-            url.hostname, url.port, timeout=3600)
+        connection, upstream = upstream_connection(url)
         status, sent = None, 0
         try:
-            connection.request(self.command, url.path.rstrip('/')+self.path, body=body, headers=headers)
+            connection.request(self.command, upstream+self.path, body=body, headers=headers)
             response = connection.getresponse()
             status = response.status
             self.send_response_only(response.status, response.reason)
@@ -579,7 +662,8 @@ def run_task(config, instance, out, docker):
             readable(guest/'guest.py', (HERE/'guest.py').read_text())
             readable(guest/'config.json', json.dumps({
                 'id': aid, 'kind': agent_cfg['kind'], 'binary': binary, 'command': agent_cfg.get('command'),
-                'model': agent_cfg['model'], 'effort': agent_cfg.get('effort'), 'tools': agent_cfg.get('tools'),
+                'model': agent_cfg['model'], 'model_provider': agent_cfg.get('model_provider'),
+                'effort': agent_cfg.get('effort'), 'tools': agent_cfg.get('tools'),
                 'system': config['prompts']['system'], 'loop': loop, 'resume': config['prompts']['resume'].strip(),
                 'time_warning': config['prompts']['time_warning'].strip(), 'deadline': deadline,
                 'phase': phase and {'until': started+phase['minutes']*60, 'loop': phase['loop'].strip(),
